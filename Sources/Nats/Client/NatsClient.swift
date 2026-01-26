@@ -16,7 +16,14 @@ public actor NatsClient {
     private let options: NatsClientOptions
     private var stateMachine = ConnectionStateMachine()
     private let subscriptionManager = SubscriptionManager()
-    private var pendingRequests: [String: CheckedContinuation<NatsMessage, any Error>] = [:]
+
+    /// Pending request tracking for request-reply pattern
+    private struct PendingRequest {
+        let continuation: CheckedContinuation<NatsMessage, any Error>
+        let requestSubject: String
+    }
+
+    private var pendingRequests: [String: PendingRequest] = [:]
 
     // NIO components
     private var eventLoopGroup: EventLoopGroup?
@@ -121,7 +128,7 @@ public actor NatsClient {
 
         // Cancel pending requests
         for (_, continuation) in pendingRequests {
-            continuation.resume(throwing: ConnectionError.closed)
+            continuation.continuation.resume(throwing: ConnectionError.closed)
         }
         pendingRequests.removeAll()
 
@@ -240,8 +247,8 @@ public actor NatsClient {
 
         return try await withCheckedThrowingContinuation { continuation in
             Task {
-                // Store continuation
-                await self.storePendingRequest(replySubject: replySubject, continuation: continuation)
+                // Store continuation with original request subject for error reporting
+                await self.storePendingRequest(replySubject: replySubject, requestSubject: subject, continuation: continuation)
 
                 // Publish request
                 do {
@@ -256,8 +263,8 @@ public actor NatsClient {
                 // Set up timeout
                 Task {
                     try? await Task.sleep(for: effectiveTimeout)
-                    if let cont = await self.removePendingRequest(replySubject: replySubject) {
-                        cont.resume(throwing: NatsError.timeout(operation: "request", after: effectiveTimeout))
+                    if let pending = await self.removePendingRequest(replySubject: replySubject) {
+                        pending.continuation.resume(throwing: NatsError.timeout(operation: "request", after: effectiveTimeout))
                     }
                 }
             }
@@ -570,12 +577,12 @@ public actor NatsClient {
         )
 
         // Check if this is a response to a pending request
-        if subject.hasPrefix(inboxPrefix), let continuation = pendingRequests.removeValue(forKey: subject) {
-            // Check for no responders
+        if subject.hasPrefix(inboxPrefix), let pending = pendingRequests.removeValue(forKey: subject) {
+            // Check for no responders - use the original request subject for clearer error messages
             if let headers = headers, headers.isNoResponders {
-                continuation.resume(throwing: ProtocolError.noResponders(subject: subject))
+                pending.continuation.resume(throwing: ProtocolError.noResponders(subject: pending.requestSubject))
             } else {
-                continuation.resume(returning: message)
+                pending.continuation.resume(returning: message)
             }
             return
         }
@@ -745,15 +752,19 @@ public actor NatsClient {
 
     private func storePendingRequest(
         replySubject: String,
+        requestSubject: String,
         continuation: CheckedContinuation<NatsMessage, any Error>
     ) async {
-        pendingRequests[replySubject] = continuation
+        pendingRequests[replySubject] = PendingRequest(
+            continuation: continuation,
+            requestSubject: requestSubject
+        )
     }
 
     @discardableResult
     private func removePendingRequest(
         replySubject: String
-    ) async -> CheckedContinuation<NatsMessage, any Error>? {
+    ) async -> PendingRequest? {
         pendingRequests.removeValue(forKey: replySubject)
     }
 
