@@ -4,10 +4,17 @@
 
 import Foundation
 import NIOCore
+import Logging
 
 /// Encodes ClientOp into NATS wire protocol
 struct ProtocolEncoder: MessageToByteEncoder, Sendable {
     typealias OutboundIn = ClientOp
+
+    let logger: Logger
+
+    init(logger: Logger = Logger(label: "nats.encoder")) {
+        self.logger = logger
+    }
 
     func encode(data: ClientOp, out: inout ByteBuffer) throws {
         switch data {
@@ -78,6 +85,13 @@ struct ProtocolEncoder: MessageToByteEncoder, Sendable {
     }
 
     private func encodePub(subject: String, reply: String?, payload: ByteBuffer, out: inout ByteBuffer) {
+        if logger.logLevel <= .trace {
+            let preview = payload.readableBytes > 0
+                ? (payload.getString(at: payload.readerIndex, length: min(payload.readableBytes, 2048)) ?? "<\(payload.readableBytes) bytes binary>")
+                : "<empty>"
+            logger.trace(">>> PUB \(subject)\(reply.map { " reply=\($0)" } ?? "") [\(payload.readableBytes)B] \(preview)")
+        }
+
         out.writeString("PUB ")
         out.writeString(subject)
 
@@ -107,6 +121,13 @@ struct ProtocolEncoder: MessageToByteEncoder, Sendable {
 
         let headerSize = headersBuffer.readableBytes
         let totalSize = headerSize + payload.readableBytes
+
+        if logger.logLevel <= .trace {
+            let preview = payload.readableBytes > 0
+                ? (payload.getString(at: payload.readerIndex, length: min(payload.readableBytes, 2048)) ?? "<\(payload.readableBytes) bytes binary>")
+                : "<empty>"
+            logger.trace(">>> HPUB \(subject)\(reply.map { " reply=\($0)" } ?? "") [\(payload.readableBytes)B] \(preview)")
+        }
 
         out.writeString("HPUB ")
         out.writeString(subject)

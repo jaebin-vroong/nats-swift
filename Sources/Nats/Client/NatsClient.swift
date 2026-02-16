@@ -398,13 +398,14 @@ public actor NatsClient {
         self.connectionHandler = handler
 
         // NATS uses TLS upgrade protocol - connect via TCP first, then upgrade after INFO
+        let protocolLogger = self.logger
         let bootstrap = ClientBootstrap(group: group)
             .channelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
             .channelOption(ChannelOptions.tcpOption(.tcp_nodelay), value: 1)
             .channelInitializer { channel in
                 channel.pipeline.addHandlers([
-                    MessageToByteHandler(ProtocolEncoder()),
-                    ByteToMessageHandler(ProtocolDecoder()),
+                    MessageToByteHandler(ProtocolEncoder(logger: protocolLogger)),
+                    ByteToMessageHandler(ProtocolDecoder(logger: protocolLogger)),
                     handler
                 ])
             }

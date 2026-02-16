@@ -4,10 +4,17 @@
 
 import Foundation
 import NIOCore
+import Logging
 
 /// Decodes NATS wire protocol into ServerOp
 final class ProtocolDecoder: ByteToMessageDecoder, Sendable {
     typealias InboundOut = ServerOp
+
+    let logger: Logger
+
+    init(logger: Logger = Logger(label: "nats.decoder")) {
+        self.logger = logger
+    }
 
     func decode(context: ChannelHandlerContext, buffer: inout ByteBuffer) throws -> DecodingState {
         // Save the reader index in case we need to wait for more data
@@ -128,6 +135,13 @@ final class ProtocolDecoder: ByteToMessageDecoder, Sendable {
         // Consume trailing CRLF
         buffer.moveReaderIndex(forwardBy: 2)
 
+        if logger.logLevel <= .trace {
+            let preview = payload.readableBytes > 0
+                ? (payload.getString(at: payload.readerIndex, length: min(payload.readableBytes, 2048)) ?? "<\(payload.readableBytes) bytes binary>")
+                : "<empty>"
+            logger.trace("<<< MSG \(subject)\(reply.map { " reply=\($0)" } ?? "") [\(payload.readableBytes)B] \(preview)")
+        }
+
         return .decoded(.msg(subject: subject, sid: sid, reply: reply, payload: payload))
     }
 
@@ -186,6 +200,13 @@ final class ProtocolDecoder: ByteToMessageDecoder, Sendable {
 
         // Consume trailing CRLF
         buffer.moveReaderIndex(forwardBy: 2)
+
+        if logger.logLevel <= .trace {
+            let preview = payload.readableBytes > 0
+                ? (payload.getString(at: payload.readerIndex, length: min(payload.readableBytes, 2048)) ?? "<\(payload.readableBytes) bytes binary>")
+                : "<empty>"
+            logger.trace("<<< HMSG \(subject)\(reply.map { " reply=\($0)" } ?? "") [\(payload.readableBytes)B] \(preview)")
+        }
 
         return .decoded(.hmsg(subject: subject, sid: sid, reply: reply, headers: headers, payload: payload))
     }
