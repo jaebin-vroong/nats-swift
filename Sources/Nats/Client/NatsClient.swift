@@ -60,7 +60,7 @@ public actor NatsClient {
     public init() {
         self.options = NatsClientOptions()
         self.logger = options.logger
-        self.inboxPrefix = options.inboxPrefix
+        self.inboxPrefix = "\(options.inboxPrefix).\(Subject.randomToken())"
         self.reconnectionState = ReconnectionState(policy: options.reconnect)
     }
 
@@ -70,7 +70,7 @@ public actor NatsClient {
         configure(&opts)
         self.options = opts
         self.logger = opts.logger
-        self.inboxPrefix = opts.inboxPrefix
+        self.inboxPrefix = "\(opts.inboxPrefix).\(Subject.randomToken())"
         self.reconnectionState = ReconnectionState(policy: opts.reconnect)
     }
 
@@ -78,7 +78,7 @@ public actor NatsClient {
     public init(options: NatsClientOptions) {
         self.options = options
         self.logger = options.logger
-        self.inboxPrefix = options.inboxPrefix
+        self.inboxPrefix = "\(options.inboxPrefix).\(Subject.randomToken())"
         self.reconnectionState = ReconnectionState(policy: options.reconnect)
     }
 
@@ -578,7 +578,7 @@ public actor NatsClient {
         )
 
         // Check if this is a response to a pending request
-        if subject.hasPrefix(inboxPrefix), let pending = pendingRequests.removeValue(forKey: subject) {
+        if subject.hasPrefix(inboxPrefix + "."), let pending = pendingRequests.removeValue(forKey: subject) {
             // Check for no responders - use the original request subject for clearer error messages
             if let headers = headers, headers.isNoResponders {
                 pending.continuation.resume(throwing: ProtocolError.noResponders(subject: pending.requestSubject))

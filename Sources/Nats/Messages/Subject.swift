@@ -141,12 +141,14 @@ public enum Subject {
         return subjectIndex == subjectTokens.count
     }
 
+    /// Generate a random token of the given length
+    public static func randomToken(length: Int = 22) -> String {
+        let chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+        return String((0..<length).map { _ in chars.randomElement()! })
+    }
+
     /// Generate a unique inbox subject
     public static func newInbox(prefix: String = "_INBOX") -> String {
-        let random = (0..<22).map { _ in
-            let chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-            return chars.randomElement()!
-        }
-        return "\(prefix).\(String(random))"
+        return "\(prefix).\(randomToken())"
     }
 }

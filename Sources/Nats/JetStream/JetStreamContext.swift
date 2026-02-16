@@ -269,7 +269,7 @@ public actor JetStreamContext {
         let subject = API.consumerNext(prefix, stream, consumer)
 
         // Create a unique inbox for receiving messages
-        let inbox = "_INBOX.\(UUID().uuidString)"
+        let inbox = Subject.newInbox()
 
         do {
             // Subscribe to the inbox to receive messages
