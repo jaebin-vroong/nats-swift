@@ -26,12 +26,12 @@ extension ByteBuffer {
 }
 
 /// Integration tests requiring a running NATS server on localhost:4222
-@Suite("Integration Tests", .tags(.integration))
+@Suite("Integration Tests", .tags(.integration), .serialized)
 struct IntegrationTests {
 
     // MARK: - Connection Tests
 
-    @Suite("Connection Tests")
+    @Suite("Connection Tests", .serialized)
     struct ConnectionTests {
 
         @Test("Connect to NATS server")
@@ -96,7 +96,7 @@ struct IntegrationTests {
 
     // MARK: - Pub/Sub Tests
 
-    @Suite("Pub/Sub Tests")
+    @Suite("Pub/Sub Tests", .serialized)
     struct PubSubTests {
 
         @Test("Basic publish and subscribe")
@@ -338,7 +338,7 @@ struct IntegrationTests {
 
     // MARK: - Request/Reply Tests
 
-    @Suite("Request/Reply Tests")
+    @Suite("Request/Reply Tests", .serialized)
     struct RequestReplyTests {
 
         @Test("Basic request/reply")
@@ -449,7 +449,7 @@ struct IntegrationTests {
 
     // MARK: - JetStream Tests
 
-    @Suite("JetStream Tests")
+    @Suite("JetStream Tests", .serialized)
     struct JetStreamTests {
 
         @Test("Create and delete stream")
@@ -806,7 +806,7 @@ struct IntegrationTests {
 
     // MARK: - TLS Tests
 
-    @Suite("TLS Connection Tests")
+    @Suite("TLS Connection Tests", .serialized)
     struct TLSConnectionTests {
 
         @Test("Connect with TLS insecure mode")

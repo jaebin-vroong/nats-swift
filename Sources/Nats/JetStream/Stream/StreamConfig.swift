@@ -72,6 +72,12 @@ public struct StreamConfig: Codable, Sendable {
     /// Re-publish configuration
     public var republish: Republish?
 
+    /// Compression algorithm
+    public var compression: StoreCompression?
+
+    /// User-provided metadata
+    public var metadata: [String: String]?
+
     public init(
         name: String,
         subjects: [String] = [],
@@ -94,7 +100,9 @@ public struct StreamConfig: Codable, Sendable {
         sources: [StreamSource]? = nil,
         description: String? = nil,
         placement: Placement? = nil,
-        republish: Republish? = nil
+        republish: Republish? = nil,
+        compression: StoreCompression? = nil,
+        metadata: [String: String]? = nil
     ) {
         self.name = name
         self.subjects = subjects
@@ -118,6 +126,8 @@ public struct StreamConfig: Codable, Sendable {
         self.description = description
         self.placement = placement
         self.republish = republish
+        self.compression = compression
+        self.metadata = metadata
     }
 
     enum CodingKeys: String, CodingKey {
@@ -143,6 +153,8 @@ public struct StreamConfig: Codable, Sendable {
         case description
         case placement
         case republish
+        case compression
+        case metadata
     }
 }
 
@@ -167,6 +179,15 @@ public enum StorageType: String, Codable, Sendable {
 
     /// Store in memory
     case memory
+}
+
+/// Compression algorithm for stream storage
+public enum StoreCompression: String, Codable, Sendable {
+    /// No compression
+    case none
+
+    /// S2 compression
+    case s2
 }
 
 /// Policy for discarding messages when limits are reached

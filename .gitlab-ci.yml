@@ -3,14 +3,12 @@ stages:
 
 variables:
   SWIFT_VERSION: "6.2"
-  NATS_VERSION: "2.10"
+  NATS_VERSION: "2.10.24"
 
-# Test job with NATS server and TLS
+# Test job with NATS server, TLS, JetStream, and KV
 test:
   image: swift:${SWIFT_VERSION}
   stage: test
-  variables:
-    NATS_URL: "tls://localhost:4222"
   cache:
     key: ${CI_COMMIT_REF_SLUG}
     paths:
@@ -19,41 +17,40 @@ test:
     - swift --version
     - apt-get update && apt-get install -y openssl wget netcat-openbsd
     # Download and install NATS server
-    - wget -q https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}.0/nats-server-v${NATS_VERSION}.0-linux-amd64.tar.gz
-    - tar -xzf nats-server-v${NATS_VERSION}.0-linux-amd64.tar.gz
-    - mv nats-server-v${NATS_VERSION}.0-linux-amd64/nats-server /usr/local/bin/
-    # Generate CA certificate
-    - mkdir -p ./certs
+    - wget -q https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/nats-server-v${NATS_VERSION}-linux-amd64.tar.gz
+    - tar -xzf nats-server-v${NATS_VERSION}-linux-amd64.tar.gz
+    - mv nats-server-v${NATS_VERSION}-linux-amd64/nats-server /usr/local/bin/
+    - nats-server --version
+    # Generate certs in .github/certs/ (config files use relative ./certs/ paths)
+    - mkdir -p .github/certs
     - |
       openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-        -keyout ./certs/ca-key.pem \
-        -out ./certs/ca-cert.pem \
+        -keyout .github/certs/ca-key.pem \
+        -out .github/certs/ca-cert.pem \
         -subj "/CN=Test CA/O=NATS-Test/C=US"
-    # Generate Server certificate signed by CA
     - |
       openssl req -nodes -newkey rsa:2048 \
-        -keyout ./certs/server-key.pem \
-        -out ./certs/server.csr \
+        -keyout .github/certs/server-key.pem \
+        -out .github/certs/server.csr \
         -subj "/CN=localhost/O=NATS-Test/C=US"
       openssl x509 -req -days 365 \
-        -in ./certs/server.csr \
-        -CA ./certs/ca-cert.pem \
-        -CAkey ./certs/ca-key.pem \
+        -in .github/certs/server.csr \
+        -CA .github/certs/ca-cert.pem \
+        -CAkey .github/certs/ca-key.pem \
         -CAcreateserial \
-        -out ./certs/server-cert.pem \
+        -out .github/certs/server-cert.pem \
         -extfile <(echo "subjectAltName=DNS:localhost,IP:127.0.0.1")
-    # Generate Client certificate for mTLS
     - |
       openssl req -nodes -newkey rsa:2048 \
-        -keyout ./certs/client-key.pem \
-        -out ./certs/client.csr \
+        -keyout .github/certs/client-key.pem \
+        -out .github/certs/client.csr \
         -subj "/CN=test-client/O=NATS-Test/C=US"
       openssl x509 -req -days 365 \
-        -in ./certs/client.csr \
-        -CA ./certs/ca-cert.pem \
-        -CAkey ./certs/ca-key.pem \
+        -in .github/certs/client.csr \
+        -CA .github/certs/ca-cert.pem \
+        -CAkey .github/certs/ca-key.pem \
         -CAcreateserial \
-        -out ./certs/client-cert.pem
+        -out .github/certs/client-cert.pem
     # Start all NATS servers
     - nats-server -c .github/nats-server.conf &
     - nats-server -c .github/nats-token.conf &
@@ -63,12 +60,12 @@ test:
     # Wait for all servers to be ready
     - |
       for i in $(seq 1 30); do
-        nc -z localhost 4222 && nc -z localhost 4223 && nc -z localhost 4224 && nc -z localhost 4225 && echo "All NATS servers ready" && break
+        nc -z localhost 4222 && nc -z localhost 4223 && nc -z localhost 4224 && nc -z localhost 4225 && nc -z localhost 4227 && echo "All NATS servers ready" && break
         sleep 1
       done
     - sleep 2
   script:
     - swift build
-    - swift test
+    - swift test --no-parallel
   after_script:
     - pkill nats-server || true

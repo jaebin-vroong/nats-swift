@@ -146,16 +146,17 @@ public struct NKeyAuthenticator: @unchecked Sendable {
 
     // MARK: - CRC16
 
+    /// CRC-16/XMODEM (polynomial 0x1021) matching the Go nkeys reference implementation
     private static func crc16(_ data: [UInt8]) -> [UInt8] {
         var crc: UInt16 = 0
 
         for byte in data {
-            crc ^= UInt16(byte)
+            crc ^= UInt16(byte) << 8
             for _ in 0..<8 {
-                if crc & 1 != 0 {
-                    crc = (crc >> 1) ^ 0xA001
+                if crc & 0x8000 != 0 {
+                    crc = ((crc << 1) ^ 0x1021) & 0xFFFF
                 } else {
-                    crc >>= 1
+                    crc = (crc << 1) & 0xFFFF
                 }
             }
         }

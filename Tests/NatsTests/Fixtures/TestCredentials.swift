@@ -9,8 +9,8 @@ enum TestCredentials {
 
     // MARK: - Valid NKey Seeds
 
-    /// A valid NKey user seed for testing (generated with correct CRC16 checksum)
-    static let validUserSeed = "SUAACAQDAQCQMBYIBEFAWDANBYHRAEISCMKBKFQXDAMRUGY4DUPB6IDSHY"
+    /// A valid NKey user seed for testing (generated with `nk -gen user`)
+    static let validUserSeed = "SUAG5ZLJASJYXWBBENWVGFLXKG4SUBTQG5KMNGEI36BOK3DWFWVXOWNEAA"
 
     // MARK: - Invalid Seeds for Error Testing
 
@@ -35,7 +35,7 @@ enum TestCredentials {
     -----END NATS USER JWT-----
 
     -----BEGIN USER NKEY SEED-----
-    SUAACAQDAQCQMBYIBEFAWDANBYHRAEISCMKBKFQXDAMRUGY4DUPB6IDSHY
+    SUAG5ZLJASJYXWBBENWVGFLXKG4SUBTQG5KMNGEI36BOK3DWFWVXOWNEAA
     -----END USER NKEY SEED-----
     """
 
@@ -50,7 +50,7 @@ enum TestCredentials {
 
 
     -----BEGIN USER NKEY SEED-----
-      SUAACAQDAQCQMBYIBEFAWDANBYHRAEISCMKBKFQXDAMRUGY4DUPB6IDSHY
+      SUAG5ZLJASJYXWBBENWVGFLXKG4SUBTQG5KMNGEI36BOK3DWFWVXOWNEAA
     -----END USER NKEY SEED-----
 
     """

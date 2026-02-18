@@ -49,6 +49,11 @@ public actor Stream {
         try await purge(request: PurgeRequest(seq: seq))
     }
 
+    /// Purge messages matching a subject filter, optionally keeping some
+    public func purge(subject: String, keep: UInt64) async throws(JetStreamError) -> PurgeResponse {
+        try await purge(request: PurgeRequest(filter: subject, keep: keep))
+    }
+
     /// Purge messages older than a given time
     public func purge(olderThan threshold: Duration) async throws(JetStreamError) -> PurgeResponse {
         // Calculate cutoff time

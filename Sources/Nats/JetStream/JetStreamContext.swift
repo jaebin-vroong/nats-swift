@@ -30,6 +30,12 @@ public actor JetStreamContext {
         static func consumerNext(_ prefix: String, _ stream: String, _ consumer: String) -> String { "\(prefix).CONSUMER.MSG.NEXT.\(stream).\(consumer)" }
     }
 
+    /// Access to the underlying NATS client (internal use)
+    var natsClient: NatsClient { client }
+
+    /// Access to the JetStream API prefix
+    var apiPrefix: String { prefix }
+
     init(client: NatsClient, prefix: String = "$JS.API", timeout: Duration = .seconds(5)) {
         self.client = client
         self.prefix = prefix
@@ -205,7 +211,11 @@ public actor JetStreamContext {
         }
 
         do {
-            let response = try await client.request(subject, payload: payload, timeout: timeout)
+            let response = try await client.request(
+                subject, payload: payload,
+                headers: headers.isEmpty ? nil : headers,
+                timeout: timeout
+            )
 
             // Check for error in response
             if let status = response.headers?.status, status >= 400 {
@@ -221,7 +231,97 @@ public actor JetStreamContext {
         }
     }
 
+    /// Publish with custom headers and return PubAck (used internally by KV)
+    func publishWithHeaders(
+        _ subject: String,
+        payload: ByteBuffer,
+        headers: NatsHeaders
+    ) async throws(JetStreamError) -> PubAck {
+        do {
+            let response = try await client.request(
+                subject, payload: payload,
+                headers: headers.isEmpty ? nil : headers,
+                timeout: timeout
+            )
+
+            if let status = response.headers?.status, status >= 400 {
+                let description = response.headers?.statusDescription ?? "Unknown error"
+                throw JetStreamError.publishFailed(description)
+            }
+
+            // Check for JetStream error response
+            if let errorResponse = try? JSONDecoder().decode(JSErrorResponse.self, from: response.data),
+               errorResponse.error != nil {
+                throw JetStreamError.apiError(
+                    code: errorResponse.error!.code,
+                    errorCode: errorResponse.error!.errCode,
+                    description: errorResponse.error!.description
+                )
+            }
+
+            return try JSONDecoder().decode(PubAck.self, from: response.data)
+        } catch let error as JetStreamError {
+            throw error
+        } catch {
+            throw JetStreamError.publishFailed(error.localizedDescription)
+        }
+    }
+
     // MARK: - Internal Methods
+
+    func request(_ subject: String, payload: ByteBuffer?, headers: NatsHeaders?) async throws(JetStreamError) -> NatsMessage {
+        do {
+            let response = try await client.request(
+                subject, payload: payload ?? ByteBuffer(),
+                headers: headers,
+                timeout: timeout
+            )
+
+            // Check for JetStream error response
+            if let errorResponse = try? JSONDecoder().decode(JSErrorResponse.self, from: response.data),
+               errorResponse.error != nil {
+                throw JetStreamError.apiError(
+                    code: errorResponse.error!.code,
+                    errorCode: errorResponse.error!.errCode,
+                    description: errorResponse.error!.description
+                )
+            }
+
+            // Check for no responders
+            if let headers = response.headers, headers.isNoResponders {
+                throw JetStreamError.notEnabled
+            }
+
+            return response
+        } catch let error as JetStreamError {
+            throw error
+        } catch {
+            throw JetStreamError.timeout(operation: "request", after: timeout)
+        }
+    }
+
+    /// Raw request that returns the NatsMessage without checking for JSON error body.
+    /// Used for Direct Get which returns data in headers + body, not JSON.
+    func rawRequest(_ subject: String, payload: ByteBuffer?, headers: NatsHeaders? = nil) async throws(JetStreamError) -> NatsMessage {
+        do {
+            let response = try await client.request(
+                subject, payload: payload ?? ByteBuffer(),
+                headers: headers,
+                timeout: timeout
+            )
+
+            // Check for no responders
+            if let hdrs = response.headers, hdrs.isNoResponders {
+                throw JetStreamError.notEnabled
+            }
+
+            return response
+        } catch let error as JetStreamError {
+            throw error
+        } catch {
+            throw JetStreamError.timeout(operation: "rawRequest", after: timeout)
+        }
+    }
 
     func request(_ subject: String, payload: ByteBuffer?) async throws(JetStreamError) -> NatsMessage {
         do {
@@ -324,7 +424,7 @@ public actor JetStreamContext {
 
     // MARK: - Encoding/Decoding Helpers
 
-    private func encode<T: Encodable>(_ value: T) throws(JetStreamError) -> ByteBuffer {
+    func encode<T: Encodable>(_ value: T) throws(JetStreamError) -> ByteBuffer {
         do {
             let data = try JSONEncoder().encode(value)
             var buffer = ByteBuffer()
@@ -335,7 +435,7 @@ public actor JetStreamContext {
         }
     }
 
-    private func decode<T: Decodable>(_ message: NatsMessage, as type: T.Type) throws(JetStreamError) -> T {
+    func decode<T: Decodable>(_ message: NatsMessage, as type: T.Type) throws(JetStreamError) -> T {
         do {
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .custom { decoder in

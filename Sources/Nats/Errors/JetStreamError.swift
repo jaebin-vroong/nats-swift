@@ -57,6 +57,27 @@ public enum JetStreamError: NatsErrorProtocol {
     /// Publish failed
     case publishFailed(String)
 
+    /// Invalid bucket name
+    case invalidBucketName(String)
+
+    /// Invalid key
+    case invalidKey(String)
+
+    /// Key not found
+    case keyNotFound(String)
+
+    /// Key already exists (CAS conflict)
+    case keyExists(key: String, revision: UInt64)
+
+    /// Bucket not found
+    case bucketNotFound(String)
+
+    /// History limit exceeded
+    case historyExceeded(max: Int)
+
+    /// KV operation failed
+    case kvOperationFailed(String)
+
     public var description: String {
         switch self {
         case .notEnabled:
@@ -93,6 +114,20 @@ public enum JetStreamError: NatsErrorProtocol {
             return "Pull request failed: \(reason)"
         case .publishFailed(let reason):
             return "Publish failed: \(reason)"
+        case .invalidBucketName(let name):
+            return "Invalid bucket name: '\(name)'"
+        case .invalidKey(let key):
+            return "Invalid key: '\(key)'"
+        case .keyNotFound(let key):
+            return "Key not found: '\(key)'"
+        case .keyExists(let key, let revision):
+            return "Key already exists: '\(key)' at revision \(revision)"
+        case .bucketNotFound(let name):
+            return "Bucket not found: '\(name)'"
+        case .historyExceeded(let max):
+            return "History limit exceeded: max \(max)"
+        case .kvOperationFailed(let reason):
+            return "KV operation failed: \(reason)"
         }
     }
 

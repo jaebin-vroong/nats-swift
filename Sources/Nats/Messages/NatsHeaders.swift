@@ -23,6 +23,16 @@ public struct NatsHeaders: Sendable, Equatable {
         public static let lastStream = "Nats-Last-Stream"
         public static let status = "Status"
         public static let description = "Description"
+
+        // Key-Value store headers
+        public static let kvOperation = "KV-Operation"
+        public static let rollup = "Nats-Rollup"
+        public static let natsStream = "Nats-Stream"
+        public static let natsSequence = "Nats-Sequence"
+        public static let natsTimeStamp = "Nats-Time-Stamp"
+        public static let natsSubject = "Nats-Subject"
+        public static let natsLastSequence = "Nats-Last-Sequence"
+        public static let natsMarkerReason = "Nats-Marker-Reason"
     }
 
     /// Create empty headers
