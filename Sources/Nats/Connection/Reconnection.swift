@@ -44,22 +44,21 @@ public struct ReconnectPolicy: Sendable {
     public func delay(forAttempt attempt: Int) -> Duration {
         guard attempt > 0 else { return initialDelay }
 
-        // Calculate base delay with exponential backoff
+        // Calculate base delay with exponential backoff, capped at max delay
         let multiplier = pow(backoffMultiplier, Double(attempt - 1))
         let baseNanos = Double(initialDelay.components.seconds) * 1_000_000_000
             + Double(initialDelay.components.attoseconds) / 1_000_000_000
-        let delayNanos = baseNanos * multiplier
+        let maxNanos = Double(maxDelay.components.seconds) * 1_000_000_000
+            + Double(maxDelay.components.attoseconds) / 1_000_000_000
+        let delayNanos = min(baseNanos * multiplier, maxNanos)
 
         // Apply jitter
         let jitterRange = delayNanos * jitter
+        guard jitterRange.isFinite, jitterRange > 0 else {
+            return .nanoseconds(Int64(max(0, min(delayNanos, maxNanos))))
+        }
         let jitterOffset = Double.random(in: -jitterRange...jitterRange)
-        let finalNanos = max(0, delayNanos + jitterOffset)
-
-        // Cap at max delay
-        let maxNanos = Double(maxDelay.components.seconds) * 1_000_000_000
-            + Double(maxDelay.components.attoseconds) / 1_000_000_000
-
-        let cappedNanos = min(finalNanos, maxNanos)
+        let cappedNanos = max(0, min(delayNanos + jitterOffset, maxNanos))
         return .nanoseconds(Int64(cappedNanos))
     }
 
