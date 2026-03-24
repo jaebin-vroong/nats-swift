@@ -26,7 +26,7 @@ A modern, high-performance NATS client for Swift 6.0 with full JetStream support
 ## Requirements
 
 - Swift 6.0+
-- macOS 15+ / iOS 18+ / tvOS 18+ / watchOS 11+ / Linux
+- macOS 14+ / iOS 17+ / tvOS 17+ / watchOS 10+ / Linux
 
 ## Installation
 

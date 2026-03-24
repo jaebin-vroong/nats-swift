@@ -2,12 +2,68 @@
 // Nexus Technologies, LLC
 // Licensed under the Apache License, Version 2.0
 
+import Atomics
+#if canImport(Synchronization)
+import Synchronization
+#endif
 import Foundation
 @preconcurrency import NIOCore
 import NIOPosix
 @preconcurrency import NIOSSL
 import Logging
-import Synchronization
+
+// Message counters: stdlib `Synchronization.Atomic` when the module exists *and* the OS
+// version supports it; otherwise `swift-atomics` (`ManagedAtomic`).
+// Note: Swift exposes `Atomic` via the `Synchronization` module (not `Synchronization.Atomic`).
+
+private protocol NatsClientMessageStats: Sendable {
+    nonisolated func recordSent()
+    nonisolated func recordReceived()
+    nonisolated func snapshot() -> ClientStats
+}
+
+#if canImport(Synchronization)
+@available(iOS 18, macOS 15, tvOS 18, watchOS 11, *)
+private final class SynchronizationNatsMessageStats: NatsClientMessageStats {
+    private let sent = Atomic<UInt64>(0)
+    private let received = Atomic<UInt64>(0)
+
+    nonisolated func recordSent() {
+        sent.wrappingAdd(1, ordering: .relaxed)
+    }
+
+    nonisolated func recordReceived() {
+        received.wrappingAdd(1, ordering: .relaxed)
+    }
+
+    nonisolated func snapshot() -> ClientStats {
+        ClientStats(
+            messagesSent: sent.load(ordering: .relaxed),
+            messagesReceived: received.load(ordering: .relaxed)
+        )
+    }
+}
+#endif
+
+private final class SwiftAtomicsNatsMessageStats: NatsClientMessageStats {
+    private let sent = ManagedAtomic<UInt64>(0)
+    private let received = ManagedAtomic<UInt64>(0)
+
+    nonisolated func recordSent() {
+        sent.wrappingIncrement(ordering: .relaxed)
+    }
+
+    nonisolated func recordReceived() {
+        received.wrappingIncrement(ordering: .relaxed)
+    }
+
+    nonisolated func snapshot() -> ClientStats {
+        ClientStats(
+            messagesSent: sent.load(ordering: .relaxed),
+            messagesReceived: received.load(ordering: .relaxed)
+        )
+    }
+}
 
 /// Main NATS client actor
 public actor NatsClient {
@@ -30,9 +86,7 @@ public actor NatsClient {
     private var channel: Channel?
     private var connectionHandler: ConnectionHandler?
 
-    // Counters using Swift 6 Atomics
-    private let _messagesSent = Atomic<UInt64>(0)
-    private let _messagesReceived = Atomic<UInt64>(0)
+    nonisolated private let messageStats: any NatsClientMessageStats
 
     // Inbox for request-reply
     private var inboxSubscription: Subscription?
@@ -58,6 +112,7 @@ public actor NatsClient {
 
     /// Create a new NATS client with default options
     public init() {
+        self.messageStats = Self.makeMessageStats()
         self.options = NatsClientOptions()
         self.logger = options.logger
         self.inboxPrefix = "\(options.inboxPrefix).\(Subject.randomToken())"
@@ -66,6 +121,7 @@ public actor NatsClient {
 
     /// Create a new NATS client with configuration closure
     public init(_ configure: (inout NatsClientOptions) -> Void) {
+        self.messageStats = Self.makeMessageStats()
         var opts = NatsClientOptions()
         configure(&opts)
         self.options = opts
@@ -76,6 +132,7 @@ public actor NatsClient {
 
     /// Create a new NATS client with options
     public init(options: NatsClientOptions) {
+        self.messageStats = Self.makeMessageStats()
         self.options = options
         self.logger = options.logger
         self.inboxPrefix = "\(options.inboxPrefix).\(Subject.randomToken())"
@@ -199,7 +256,7 @@ public actor NatsClient {
         } catch {
             throw .serverError("Write failed: \(error)")
         }
-        _messagesSent.wrappingAdd(1, ordering: .relaxed)
+        messageStats.recordSent()
     }
 
     /// Publish a message with a reply subject
@@ -221,7 +278,7 @@ public actor NatsClient {
         } catch {
             throw .serverError("Write failed: \(error)")
         }
-        _messagesSent.wrappingAdd(1, ordering: .relaxed)
+        messageStats.recordSent()
     }
 
     // MARK: - Request-Reply
@@ -253,7 +310,7 @@ public actor NatsClient {
                 // Publish request
                 do {
                     try await self.write(.publish(subject: subject, reply: replySubject, headers: headers, payload: payload))
-                    self._messagesSent.wrappingAdd(1, ordering: .relaxed)
+                    self.messageStats.recordSent()
                 } catch {
                     await self.removePendingRequest(replySubject: replySubject)
                     continuation.resume(throwing: error)
@@ -354,10 +411,7 @@ public actor NatsClient {
 
     /// Client statistics
     nonisolated public var stats: ClientStats {
-        ClientStats(
-            messagesSent: _messagesSent.load(ordering: .relaxed),
-            messagesReceived: _messagesReceived.load(ordering: .relaxed)
-        )
+        messageStats.snapshot()
     }
 
     // MARK: - Private Methods
@@ -567,7 +621,7 @@ public actor NatsClient {
         headers: NatsHeaders?,
         payload: ByteBuffer
     ) async {
-        _messagesReceived.wrappingAdd(1, ordering: .relaxed)
+        messageStats.recordReceived()
 
         let message = NatsMessage(
             subject: subject,
@@ -774,6 +828,15 @@ public actor NatsClient {
             throw ConnectionError.closed
         }
         try await channel.writeAndFlush(op)
+    }
+
+    private static func makeMessageStats() -> any NatsClientMessageStats {
+        #if canImport(Synchronization)
+        if #available(iOS 18, macOS 15, tvOS 18, watchOS 11, *) {
+            return SynchronizationNatsMessageStats()
+        }
+        #endif
+        return SwiftAtomicsNatsMessageStats()
     }
 }
 
